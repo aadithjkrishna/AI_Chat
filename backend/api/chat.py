@@ -2,7 +2,7 @@ from fastapi import APIRouter
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from typing import List, Dict
-import re
+import httpx
 
 from services.ollama_service import stream_ollama_response
 from services.mcp_service import call_arch_mcp_tool
@@ -13,83 +13,102 @@ class ChatRequest(BaseModel):
     history: List[Dict[str, str]]     
     model: str = "llama3.2:3b"
 
+ARCH_TOOLS = [
+    {
+        "type": "function",
+        "function": {
+            "name": "get_system_info",
+            "description": "Get general system information including kernel, memory, and uptime."
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "check_updates_dry_run",
+            "description": "Check if there are any Arch Linux system updates available."
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "search_aur",
+            "description": "Search the Arch User Repository (AUR) for a specific package.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string", "description": "The name of the package"}
+                },
+                "required": ["query"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "search_archwiki",
+            "description": "Search the Arch Wiki for guides, errors, or documentation.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string", "description": "The topic to search for"}
+                },
+                "required": ["query"]
+            }
+        }
+    }
+]
+
 @router.post("/api/chat/stream")
 async def chat_stream(payload: ChatRequest):
     
-    payload.history = [msg for msg in payload.history if msg['role'] != 'system']
+    clean_history = [msg for msg in payload.history if msg['role'] in ['user', 'assistant', 'system', 'tool']]
     
-    last_user_msg = payload.history[-1]["content"].lower()
-    
-    command_triggers = ["run", "execute", "neofetch", "fastfetch", "ls", "terminal", "pacman", "system", "update", "upgrade", "disk"]
-    is_command_request = any(trigger in last_user_msg for trigger in command_triggers)
-    
-    if is_command_request:
-        system_directive = (
-            "You are an active terminal agent. The user wants to execute a system command. "
-            "Output your intent using this exact layout: [RUN: command_here]. "
-            "Do not output any introductory or concluding text."
-        )
-    else:
-        system_directive = (
-            "You are a helpful, friendly AI assistant chatting naturally with Aadith. "
-            "Answer the user's questions directly. Do NOT use any bracket commands like [RUN: ...]."
-        )
-        
-    payload.history.insert(0, {"role": "system", "content": system_directive})
+    if not any(msg['role'] == 'system' for msg in clean_history):
+        clean_history.insert(0, {
+            "role": "system", 
+            "content": "You are a highly intelligent Arch Linux assistant. Chat naturally with the user. If they ask a question that requires system data, search, or updates, use your available tools."
+        })
 
     async def event_generator():
-        collected_text = ""
-        command_intercepted = False
-        command_to_run = ""
+        async with httpx.AsyncClient() as client:
+            try:
+                response = await client.post(
+                    "http://localhost:11434/api/chat",
+                    json={
+                        "model": payload.model,
+                        "messages": clean_history,
+                        "tools": ARCH_TOOLS,
+                        "stream": False
+                    },
+                    timeout=30.0
+                )
+                data = response.json()
+                message = data.get("message", {})
+            except Exception as e:
+                yield f"data: ⚠️ Error communicating with Ollama: {str(e)}\n\n"
+                return
 
-        async for text_chunk in stream_ollama_response(payload.history, payload.model):
-            collected_text += text_chunk
-            
-            match = re.search(r"\[RUN:\s*([^\]\n]+)", collected_text)
-            if match and not command_intercepted:
-                command_to_run = match.group(1).replace("]", "").strip().lower()
-                command_intercepted = True
-                break
-            
-            yield f"data: {text_chunk}\n\n"
-        if command_intercepted and command_to_run:
-            
-            target_tool = "get_system_info"
-            tool_args = {}
-            
-            if any(k in command_to_run for k in ["fastfetch", "neofetch", "system", "info"]):
-                target_tool = "get_system_info"
-            elif any(k in command_to_run for k in ["update", "upgrade", "pacman"]):
-                target_tool = "check_updates_dry_run"
-            elif any(k in command_to_run for k in ["disk", "space", "storage"]):
-                target_tool = "check_disk_space"
-            elif "news" in command_to_run:
-                target_tool = "get_latest_news"
-            
-            yield f"data: ⚙️ *Arch-MCP Server: Invoking structured tool `{target_tool}`...*\n\n"
+        if "tool_calls" in message and message["tool_calls"]:
+            tool_call = message["tool_calls"][0]["function"]
+            target_tool = tool_call["name"]
+            tool_args = tool_call.get("arguments", {})
+
+            param_display = f" with args {tool_args}" if tool_args else ""
+            yield f"data: ⚙️ *Arch-MCP Server: Invoking `{target_tool}`{param_display}...*\n\n"
+
             terminal_output = await call_arch_mcp_tool(target_tool, tool_args)
-            payload.history = [msg for msg in payload.history if msg['role'] != 'system']
-            
-            summary_directive = (
-                "You are a helpful UI chat assistant. Read the technical data payload provided below "
-                "and explain the contents clearly to Aadith. Use clean Markdown bullet points. "
-                "Do NOT under any circumstances output any brackets like [RUN: ...] or system tags."
-            )
-            payload.history.insert(0, {"role": "system", "content": summary_directive})
-            
-            payload.history.append({"role": "assistant", "content": f"Invoked tool execution tracker for `{target_tool}`."})
-            payload.history.append({
-                "role": "user", 
-                "content": f"The system tool returned this raw data profile:\n\n{terminal_output}\n\nSummarize this for me right now."
+
+            clean_history.append(message)
+            clean_history.append({
+                "role": "tool",
+                "content": str(terminal_output)
             })
-            
-            has_content = False
-            async for text_chunk in stream_ollama_response(payload.history, payload.model):
-                has_content = True
+
+            async for text_chunk in stream_ollama_response(clean_history, payload.model):
                 yield f"data: {text_chunk}\n\n"
-                
-            if not has_content:
-                formatted_fallback = terminal_output.replace("\n", "\n\n")
-                yield f"data: 📊 **Direct System Log Trace Output:**\n\n{formatted_fallback}\n\n"
+
+        else:
+            async for text_chunk in stream_ollama_response(clean_history, payload.model):
+                yield f"data: {text_chunk}\n\n"
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")
