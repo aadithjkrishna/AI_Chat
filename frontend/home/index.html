@@ -10,12 +10,12 @@
 </head>
 
 <body>
-    <!-- <div class="model-selector">
+    <div class="model-selector">
         <label for="model-select">🤖 Model:</label>
         <select id="model-select">
             <option value="llama3.2:3b">Loading models...</option>
         </select>
-    </div> -->
+    </div>
     <div class="chat-wrapper">
         <div class="chat-header" id="chat-header-title">Ollama Chat</div>
 
@@ -27,6 +27,8 @@
         </div>
 
         <div class="input-container">
+            <input type="file" id="file-input" accept=".jpg,.jpeg,.png,.pdf,.txt,.c,.cpp,.h" style="display: none;">
+            <button id="upload-btn" type="button">📎</button>
             <input type="text" id="user-input" placeholder="Ask anything..." autofocus>
             <button id="send-btn">Send</button>
         </div>

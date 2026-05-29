@@ -2,6 +2,10 @@ const chatBox = document.getElementById('chat-box');
 const userInput = document.getElementById('user-input');
 const sendBtn = document.getElementById('send-btn');
 const modelSelect = document.getElementById('model-select'); // 🤖 Hooked into the model dropdown
+const fileInput = document.getElementById('file-input');
+const uploadBtn = document.getElementById('upload-btn');
+let attachedFileBase64 = null;
+let attachedFileName = null;
 
 let conversationHistory = [];
 
@@ -13,10 +17,55 @@ userInput.addEventListener('keypress', (e) => {
     }
 });
 
+uploadBtn.addEventListener('click', () => fileInput.click());
+
+fileInput.addEventListener('change', async (e) => {
+    const file = e.target.value ? e.target.files[0] : null;
+    if (!file) return;
+
+    attachedFileName = file.name;
+    const extension = file.name.split('.').pop().toLowerCase();
+
+    if (['jpg', 'jpeg', 'png'].includes(extension)) {
+        // Handle images inline via Base64 conversion
+        const reader = new FileReader();
+        reader.onload = function (event) {
+            attachedFileBase64 = event.target.result.split(',')[1]; // Strip prefix data URL metadata
+            alert(`Image "${file.name}" attached successfully!`);
+        };
+        reader.readAsDataURL(file);
+    } else {
+        // Handle documents/code via background RAG indexing ingestion
+        const formData = new FormData();
+        formData.append("file", file);
+        
+        try {
+            uploadBtn.textContent = "⏳";
+            const response = await fetch('/api/upload', {
+                method: 'POST',
+                body: formData
+            });
+            const data = await response.json();
+            if (response.ok) {
+                alert(`File "${file.name}" ingested into local RAG store!`);
+            } else {
+                alert(`Ingestion error: ${data.detail}`);
+            }
+        } catch (err) {
+            console.error(err);
+        } finally {
+            uploadBtn.textContent = "📎";
+        }
+    }
+});
+
 async function handleSendMessage() {
     const messageText = userInput.value.trim();
-    if (!messageText) return;
+    
+    // Abort if the user hasn't typed anything AND hasn't attached an image
+    if (!messageText && !attachedFileBase64) return;
 
+    // Clear the welcome splash screen if it's still there
     const welcomeContainer = document.getElementById('welcome-container');
     if (welcomeContainer) {
         welcomeContainer.remove();
@@ -24,15 +73,39 @@ async function handleSendMessage() {
 
     userInput.value = '';
 
-    appendMessage(messageText, 'user');
+    // Determine what to show in the user's chat bubble
+    let displayMessage = messageText;
+    if (attachedFileName && !messageText) {
+        displayMessage = `*[Attached Image: ${attachedFileName}]*`;
+    } else if (attachedFileName && messageText) {
+        displayMessage = `*[Attached Image: ${attachedFileName}]*\n\n${messageText}`;
+    }
+    
+    // Render user message to the UI
+    appendMessage(displayMessage, 'user');
 
-    conversationHistory.push({ role: 'user', content: messageText });
+    // Build the message object for the API payload
+    const nextMessage = { role: 'user', content: messageText || "Analyze this image." };
+    if (attachedFileBase64) {
+        nextMessage.images = [attachedFileBase64]; // Inject the base64 string for vision models
+    }
 
+    conversationHistory.push(nextMessage);
+
+    // Create the empty assistant bubble with a blinking cursor/streaming state
     const aiBubble = appendMessage('', 'assistant');
     aiBubble.classList.add('streaming');
 
-    // 🎯 Grab the active model selection dynamically on every submission
-    const selectedModel = modelSelect ? modelSelect.value : 'llama3.2:3b';
+    let selectedModel = 'llama3.2:3b'; // Standard fallback
+    
+    const modelSelect = document.getElementById('model-select');
+    if (modelSelect) {
+        selectedModel = modelSelect.value; // Use dropdown if it exists
+    } else if (attachedFileBase64) {
+        // If there is no dropdown, but an image is attached, force the vision model!
+        selectedModel = 'llama3.2-vision'; 
+        console.log("Image detected: Auto-switching to vision model.");
+    }
 
     try {
         const response = await fetch('/api/chat/stream', {
@@ -40,38 +113,54 @@ async function handleSendMessage() {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 history: conversationHistory,
-                model: selectedModel // 🚀 Injected dynamic selection into the backend payload!
+                model: selectedModel
             })
         });
-        if (!response.ok) throw new Error('Network response was not ok');
 
+        if (!response.ok) {
+            throw new Error(`Server responded with status ${response.status}`);
+        }
+
+        // --- Stream Reading Logic ---
         const reader = response.body.getReader();
         const decoder = new TextDecoder('utf-8');
+        let aiFullResponse = '';
 
-        let done = false;
-        let completeAiResponse = '';
+        while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
 
-        while (!done) {
-            const { value, done: readerDone } = await reader.read();
-            done = readerDone;
-
-            if (value) {
-                const chunkStr = decoder.decode(value, { stream: !done });
-
-                const text = parseSSE(chunkStr);
-
-                completeAiResponse += text;
-                aiBubble.innerHTML = marked.parse(completeAiResponse);
-                chatBox.scrollTop = chatBox.scrollHeight;
+            const chunk = decoder.decode(value, { stream: true });
+            
+            // Fastapi StreamingResponse sends lines starting with "data: "
+            const lines = chunk.split('\n');
+            for (const line of lines) {
+                if (line.startsWith('data: ')) {
+                    const dataText = line.replace('data: ', '');
+                    aiFullResponse += dataText;
+                    
+                    // Render markdown dynamically. 
+                    // Make sure marked.parse() is available via your CDN script tag in index.html
+                    aiBubble.innerHTML = marked.parse(aiFullResponse);
+                    
+                    // Auto-scroll to the bottom as text streams in
+                    chatBox.scrollTop = chatBox.scrollHeight; 
+                }
             }
         }
-        aiBubble.classList.remove('streaming');
-        conversationHistory.push({ role: 'assistant', content: completeAiResponse });
+
+        // Finalize the AI message in history so the model remembers it contextually
+        conversationHistory.push({ role: 'assistant', content: aiFullResponse });
 
     } catch (error) {
-        console.error('Streaming error:', error);
+        console.error("Chat Error:", error);
+        aiBubble.innerHTML = `<span style="color: #ff4444;">⚠️ Connection failed: ${error.message}</span>`;
+    } finally {
+        // Clean up UI states and wipe attachments for the next message
         aiBubble.classList.remove('streaming');
-        aiBubble.textContent = '⚠️ Sorry, an error occurred while processing your request.';
+        attachedFileBase64 = null;
+        attachedFileName = null;
+        if (fileInput) fileInput.value = ""; 
     }
 }
 
