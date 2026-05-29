@@ -13,17 +13,67 @@ body {
     justify-content: center;
     align-items: center;
     height: 100vh;
+    transition: background-color 0.3s ease;
 }
 
-/* 📦 Chat Container Wrapper */
-.chat-wrapper {
-    width: 100%;
-    max-width: 720px; /* Widened slightly for an elegant reading layout */
-    height: 90vh;
-    background-color: #fbfaf7; /* Cream white canvas */
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
+/* Dark mode variables */
+:root {
+    --bg-primary: #f9f8f4;
+    --bg-secondary: #fbfaf7;
+    --bg-user-message: #f3f0e9;
+    --bg-code: #282c34;
+    --bg-quote: #f0ebe4;
+    --text-primary: #191919;
+    --text-secondary: #66635c;
+    --border-color: #e5e2db;
+    --send-btn-color: #cc6543;
+    --send-btn-hover: #b55435;
+}
+
+body.dark-mode {
+    --bg-primary: #1a1a1a;
+    --bg-secondary: #2d2d2d;
+    --bg-user-message: #3d3d3d;
+    --bg-code: #1e1e1e;
+    --bg-quote: #2d2d2d;
+    --text-primary: #e0e0e0;
+    --text-secondary: #a0a0a0;
+    --border-color: #404040;
+}
+
+body.dark-mode .chat-wrapper {
+    background-color: var(--bg-secondary);
+}
+
+body.dark-mode .user-message {
+    background-color: var(--bg-user-message);
+    color: var(--text-primary);
+}
+
+body.dark-mode code {
+    background-color: var(--bg-code);
+    color: var(--text-primary);
+}
+
+body.dark-mode .assistant-message p {
+    color: var(--text-primary);
+}
+
+body.dark-mode .assistant-message ul,
+body.dark-mode .assistant-message ol {
+    color: var(--text-primary);
+}
+
+body.dark-mode .assistant-message li {
+    color: var(--text-primary);
+}
+
+body.dark-mode #send-btn {
+    background-color: var(--send-btn-color);
+}
+
+body.dark-mode #send-btn:hover {
+    background-color: var(--send-btn-hover);
 }
 
 /* 🎯 Header */
@@ -38,97 +88,123 @@ body {
 }
 
 /* 💬 Chat History Box */
-.chat-box {
-    flex: 1;
-    padding: 24px 32px;
-    overflow-y: auto;
-    display: flex;
-    flex-direction: column;
-    gap: 24px; /* More breathing room between message passes */
+/* Mobile Responsive Design */
+@media (max-width: 768px) {
+    .chat-wrapper {
+        height: 100vh;
+        max-width: 100%;
+        border-radius: 0;
+    }
+
+    .chat-header {
+        padding: 16px 20px;
+        font-size: 16px;
+        flex: 0 0 auto;
+        min-height: auto;
+    }
+
+    .chat-box {
+        flex: 1;
+        padding: 16px;
+        gap: 16px;
+    }
+
+    .message {
+        max-width: 90%;
+        font-size: 14px;
+        line-height: 1.6;
+    }
+
+    .user-message {
+        padding: 10px 16px;
+        border-radius: 18px;
+    }
+
+    .input-container {
+        padding: 12px 16px 16px 16px;
+        gap: 10px;
+    }
+
+    #user-input {
+        padding: 12px 16px;
+        font-size: 14px;
+        border-radius: 22px;
+    }
+
+    #send-btn {
+        padding: 10px 18px;
+        font-size: 14px;
+    }
 }
 
-/* ✉️ Base Message Styling */
-.message {
-    max-width: 85%;
-    padding: 12px 0px; /* Minimal padding since we drop bubble backgrounds */
-    font-size: 16px;
-    line-height: 1.58; /* Premium Editorial line height for reading comfort */
-    word-wrap: break-word;
-    color: #191919;
+/* Scrollbar Styling */
+.chat-box::-webkit-scrollbar {
+    width: 8px;
 }
 
-/* 🧑‍💻 User Message: Aligned right, styled like clean text */
-.user-message {
-    align-self: flex-end;
-    background-color: #f3f0e9; /* Soft, warm neutral background tag */
-    padding: 12px 18px;
-    border-radius: 16px;
-    color: #191919;
-    font-weight: 400;
+.chat-box::-webkit-scrollbar-track {
+    background: var(--border-color);
+    border-radius: 4px;
 }
 
-/* 🤖 Assistant Message: Clean editorial left-aligned block */
-.assistant-message {
-    align-self: flex-start;
-    background-color: transparent;
-    color: #191919;
-    width: 100%;
-    max-width: 100%;
+.chat-box::-webkit-scrollbar-thumb {
+    background: var(--border-color);
+    border-radius: 4px;
 }
 
-/* ⚙️ System Message */
-.system-message {
-    align-self: center;
-    background-color: #e5e2db;
-    color: #66635c;
-    font-size: 13px;
-    padding: 6px 14px;
-    border-radius: 20px;
-    text-align: center;
+.chat-box::-webkit-scrollbar-thumb:hover {
+    background: var(--text-secondary);
 }
 
-/* ⌨️ Input Panel Container */
-.input-container {
-    display: flex;
-    padding: 16px 32px 32px 32px;
-    background-color: #fbfaf7;
-    gap: 12px;
-    align-items: flex-end;
-}
-
-/* Floating Input Box Wrapper */
-#user-input {
-    flex: 1;
-    padding: 14px 18px;
-    border: 1px solid #e5e2db;
-    border-radius: 24px; /* Pill shape */
-    font-size: 16px;
-    outline: none;
-    background-color: #ffffff;
-    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.02);
-    transition: border-color 0.2s, box-shadow 0.2s;
-}
-
+/* Focus accessibility */
+#send-btn:focus,
 #user-input:focus {
-    border-color: #d1cbc0;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+    outline: 2px solid var(--send-btn-color);
+    outline-offset: 2px;
 }
 
-/* Claude's iconic muted Terracotta/Clay Send Button */
-#send-btn {
-    padding: 12px 22px;
-    background-color: #cc6543; 
-    color: #ffffff;
-    border: none;
-    border-radius: 24px;
-    font-size: 15px;
-    font-weight: 500;
-    cursor: pointer;
-    transition: background-color 0.2s;
+/* Skip link for accessibility */
+.skip-link {
+    position: absolute;
+    left: -9999px;
+    z-index: 9999;
 }
 
-#send-btn:hover {
-    background-color: #b55435;
+.skip-link:focus {
+    left: 0;
+    top: 0;
+    padding: 12px 20px;
+    background: var(--send-btn-color);
+    color: white;
+    border-radius: 0;
+}
+
+/* Dark mode adjustments */
+body.dark-mode {
+    background-color: var(--bg-secondary);
+}
+
+body.dark-mode .chat-wrapper {
+    background-color: var(--bg-secondary);
+}
+
+body.dark-mode .user-message {
+    background-color: var(--bg-user-message);
+    color: var(--text-primary);
+}
+
+body.dark-mode #user-input {
+    background-color: var(--bg-secondary);
+    border-color: var(--border-color);
+    color: var(--text-primary);
+}
+
+body.dark-mode #user-input:focus {
+    box-shadow: none;
+}
+
+body.dark-mode .streaming::after {
+    color: #cc6543;
 }
 
 /* ✉️ Base Message Layout Configuration */
@@ -175,19 +251,81 @@ body {
 }
 
 /* 💻 Inline Code blocks decoration */
-.assistant-message code {
-    background-color: #f3f0e9;
-    padding: 3px 6px;
-    border-radius: 4px;
-    font-family: 'Courier New', Courier, monospace;
-    font-size: 14px;
+/* Code Block Styling */
+.assistant-message pre {
+    background-color: var(--bg-code);
+    padding: 16px;
+    border-radius: 8px;
+    margin: 12px 0;
+    overflow-x: auto;
+    border: 1px solid var(--border-color);
 }
 
-/* 🌟 Smooth Pulsing Typing Cursor */
+.assistant-message code {
+    background-color: var(--bg-code);
+    padding: 6px 8px;
+    border-radius: 6px;
+    font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+    font-size: 13px;
+    color: #abb2bf;
+}
+
+.assistant-message code[data-lang]::before {
+    content: attr(data-lang);
+    color: var(--text-secondary);
+    font-size: 12px;
+    text-transform: uppercase;
+    display: block;
+    margin-bottom: 8px;
+}
+
+/* Quote Block Styling */
+.assistant-message blockquote {
+    border-left: 3px solid var(--send-btn-color);
+    padding-left: 16px;
+    margin: 12px 0;
+    color: var(--text-secondary);
+    font-style: italic;
+    background-color: var(--bg-quote);
+    padding: 12px 16px;
+    border-radius: 0 8px 8px 0;
+}
+
+body.dark-mode blockquote {
+    border-left-color: #cc6543;
+    background-color: var(--bg-quote);
+}
+
+body.dark-mode .assistant-message p {
+    color: var(--text-primary);
+}
+
+body.dark-mode .assistant-message ul,
+body.dark-mode .assistant-message ol {
+    color: var(--text-primary);
+}
+
+body.dark-mode .assistant-message li {
+    color: var(--text-primary);
+}
+
+/* List Styling */
+.assistant-message ul,
+.assistant-message ol {
+    margin-bottom: 14px;
+    padding-left: 24px;
+}
+
+.assistant-message li {
+    margin-bottom: 6px;
+    color: var(--text-primary);
+}
+
+/* Typing Cursor */
 .streaming::after {
     content: " ❘";
     font-weight: 900;
-    color: #cc6543;
+    color: var(--send-btn-color);
     animation: blink 0.8s infinite;
 }
 

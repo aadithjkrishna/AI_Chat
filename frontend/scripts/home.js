@@ -4,12 +4,31 @@ const sendBtn = document.getElementById('send-btn');
 const modelSelect = document.getElementById('model-select'); // 🤖 Hooked into the model dropdown
 const fileInput = document.getElementById('file-input');
 const uploadBtn = document.getElementById('upload-btn');
+const darkModeToggle = document.getElementById('dark-mode-toggle');
 let attachedFileBase64 = null;
 let attachedFileName = null;
 
 let conversationHistory = [];
 
 sendBtn.addEventListener('click', handleSendMessage);
+
+// Initialize dark mode from localStorage
+if (localStorage.getItem('darkMode') === 'true') {
+    document.body.classList.add('dark-mode');
+    if (darkModeToggle) {
+        darkModeToggle.setAttribute('aria-pressed', 'true');
+    }
+}
+
+// Dark mode toggle handler
+if (darkModeToggle) {
+    darkModeToggle.addEventListener('click', () => {
+        document.body.classList.toggle('dark-mode');
+        const isDark = document.body.classList.contains('dark-mode');
+        localStorage.setItem('darkMode', isDark);
+        darkModeToggle.setAttribute('aria-pressed', isDark);
+    });
+}
 
 userInput.addEventListener('keypress', (e) => {
     if (e.key === 'Enter') {
@@ -196,11 +215,19 @@ async function loadAvailableModels() {
     const headerTitle = document.getElementById('chat-header-title'); // Grab the header text reference
     if (!selectElement) return;
 
+    // Show loading state
+    selectElement.innerHTML = '<option value="">⏳ Loading models...</option>';
+
     try {
         const response = await fetch('/api/models');
         const data = await response.json();
 
         selectElement.innerHTML = '';
+
+        if (!Array.isArray(data.models) || data.models.length === 0) {
+            selectElement.innerHTML = '<option value="llama3.2:3b">llama3.2:3b (Default)</option>';
+            return;
+        }
 
         data.models.forEach(modelName => {
             const option = document.createElement('option');

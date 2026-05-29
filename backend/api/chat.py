@@ -150,13 +150,15 @@ async def chat_stream(payload: ChatRequest):
     async def event_generator():
         async with httpx.AsyncClient() as client:
             try:
-                # Evaluates potential function intent across active tools
+                # 4. Handle tool execution flow
+                # Evaluate potential function intent across active tools
+                tools_list = ARCH_TOOLS if not latest_user_msg.get("images") else None
                 response = await client.post(
                     "http://localhost:11434/api/chat",
                     json={
                         "model": payload.model,
                         "messages": clean_history,
-                        "tools": ARCH_TOOLS,
+                        "tools": tools_list,
                         "stream": False
                     },
                     timeout=30.0
@@ -168,7 +170,15 @@ async def chat_stream(payload: ChatRequest):
                 yield f"data: ⚠️ Error evaluating intent via Ollama daemon: {str(e)}\n\n"
                 return
 
-        # 4. Handle tool execution flow
+        # Handle vision model path - images present
+        if latest_user_msg.get("images"):
+            yield f"data: 📷 Vision model handling image natively - no tools needed\n\n"
+            # Route normal token streaming (vision + text arrays)
+            async for text_chunk in stream_ollama_response(clean_history, payload.model):
+                yield f"data: {text_chunk}\n\n"
+            return
+
+        # Handle tool execution flow (text-only chats)
         if "tool_calls" in message and message["tool_calls"]:
             tool_call = message["tool_calls"][0]["function"]
             target_tool = tool_call["name"]
@@ -192,7 +202,7 @@ async def chat_stream(payload: ChatRequest):
                 yield f"data: {text_chunk}\n\n"
 
         else:
-            # 5. Route normal token streaming execution (handles vision and text arrays natively)
+            # Route normal token streaming execution (handles text and vision arrays natively)
             async for text_chunk in stream_ollama_response(clean_history, payload.model):
                 yield f"data: {text_chunk}\n\n"
 
